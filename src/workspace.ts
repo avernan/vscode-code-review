@@ -27,6 +27,7 @@ import { CommentListEntry } from './comment-list-entry';
 import { ImportFactory, ConflictMode } from './import-factory';
 import { Decorations } from './utils/decoration-utils';
 import { CommentLensProvider } from './comment-lens-provider';
+import { CommentPickEntry } from './comment-pick-entry';
 
 const checkForCodeReviewFile = (fileName: string) => {
   commands.executeCommand('setContext', 'codeReview:displayCodeReviewExplorer', fs.existsSync(fileName));
@@ -45,6 +46,7 @@ export class WorkspaceContext {
 
   private openSelectionRegistration!: Disposable;
   private addNoteRegistration!: Disposable;
+  private editNoteRegistration!: Disposable;
   private filterByCommitEnableRegistration!: Disposable;
   private filterByCommitDisableRegistration!: Disposable;
   private filterByFilenameEnableRegistration!: Disposable;
@@ -260,6 +262,48 @@ export class WorkspaceContext {
       this.webview.addComment(this.commentService);
       this.commentsProvider.refresh();
       this.updateDecorations();
+    });
+
+    this.editNoteRegistration = commands.registerCommand('codeReview.editNote', () => {
+      this.exportFactory.getFilesContainingComments().then((filesWithComments) => {
+        const matchingFile = filesWithComments.find((file) =>
+          window.activeTextEditor?.document.fileName.endsWith(file.label),
+        );
+        if (matchingFile) {
+          const items = matchingFile.data.lines
+            .map((csvEntry) => {
+              return new CommentPickEntry(
+                csvEntry.id,
+                csvEntry.title,
+                csvEntry.lines,
+                csvEntry.comment,
+                csvEntry,
+                rangesFromStringDefinition(csvEntry.lines),
+              );
+            })
+            .filter((entry) => {
+              return entry.lines.some((element) => {
+                if (window.activeTextEditor) {
+                  return element.contains(window.activeTextEditor?.selection);
+                }
+              });
+            });
+
+          if (items.length == 0) {
+            // Maybe show an error message
+            window.showInformationMessage('No comment at current position');
+          } else if (items.length == 1) {
+            // Open only match
+            this.webview.editComment(this.commentService, items[0].lines, items[0].csvEntry);
+          } else {
+            window.showQuickPick(items).then((item) => {
+              if (item) {
+                this.webview.editComment(this.commentService, item.lines, item.csvEntry);
+              }
+            });
+          }
+        }
+      });
     });
 
     this.filterByCommitEnableRegistration = commands.registerCommand('codeReview.filterByCommitEnable', () => {
@@ -508,6 +552,7 @@ export class WorkspaceContext {
     this.context.subscriptions.push(
       this.openSelectionRegistration,
       this.addNoteRegistration,
+      this.editNoteRegistration,
       this.deleteNoteRegistration,
       this.filterByCommitEnableRegistration,
       this.filterByCommitDisableRegistration,
@@ -533,6 +578,7 @@ export class WorkspaceContext {
   unregisterCommands() {
     this.openSelectionRegistration.dispose();
     this.addNoteRegistration.dispose();
+    this.editNoteRegistration.dispose();
     this.deleteNoteRegistration.dispose();
     this.filterByCommitEnableRegistration.dispose();
     this.filterByCommitDisableRegistration.dispose();

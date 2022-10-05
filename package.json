@@ -49,6 +49,10 @@
         }
       },
       {
+        "command": "codeReview.editNote",
+        "title": "Code Review: Edit Current Note"
+      },
+      {
         "command": "codeReview.exportAsHtmlWithDefaultTemplate",
         "title": "Code Review: Export as HTML with default template"
       },
